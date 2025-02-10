@@ -1,0 +1,65 @@
+# source db where our data is coming from
+# and the destination where we'll send data to
+# we use the elt script to move data between those to
+
+version: '3'
+
+services:
+  source_postgres:
+    image: postgres:15
+    ports:
+      - '5433:5432' # importance in term of accessing the service itself
+                    # to access source and destination db on the local host
+    networks:
+      - elt_network # create a network for all of our containers to talk to
+    environment:
+      POSTGRES_DB: source_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    volumes: 
+      - ./source_db_init/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # volume is how we able to persist data. So each container can create their volume
+      # whatever we do inside of that docker container will contain the data
+      # that we utilize within that volume
+      # so that data will persist as long as we don't delete it
+
+  destination_postgres:
+    image: postgres:15
+    ports:
+      - '5434:5432'
+    networks:
+      - elt_network
+    environment:
+      POSTGRES_DB: destination_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      # we dont want any volume section here 
+      # because we dont want to save the data every single time
+      # for testing purpose, we want to make sure that the elt script
+      # runs every single time successfully 
+      # and so if the data persist, we can't comfirm or deny
+      # that elt script is working 
+      
+  # we want Docker to see that we utilize a script here to send data from source to destination
+  # and use it for the runtime to run the script itself instead of us having to manually do it
+  elt_script:
+    build:
+      context: ./elt_script # Directory containing the Dockerfile and elt_script.py
+      dockerfile: Dockerfile # Name of the Dockerfile, if it's something other than "Dockerfile", specify here
+    command: ['python', 'elt_script.py'] # the command we'll run
+    networks:
+      - elt_network
+    depends_on:
+      - source_postgres
+      - destination_postgres
+    # depend_on property is that this container depends other container
+    # if it has any dependencies, this container won't initialize 
+    # until the other containers it depents on 
+    # are finished building
+
+    # so this orchestration is a big adventage of Docker
+    # และนี่คือข้อดีของการใช้ docker เพราะเราสามารถกำหนดลำดับการทำงานได้
+
+networks:
+  elt_network:
+    driver: bridge # all the containers'll recognize that is the network we want it to talk
